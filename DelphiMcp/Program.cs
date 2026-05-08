@@ -46,6 +46,8 @@ static async Task<int> RunCliAsync(string[] args)
     string? library = GetArg(args, "--library");
     string? version = GetArg(args, "--version");
     string? path = GetArg(args, "--path");
+    string? maxChunksStr = GetArg(args, "--max-chunks");
+    int? maxChunks = maxChunksStr != null && int.TryParse(maxChunksStr, out int mc) ? mc : null;
 
     if (string.IsNullOrEmpty(library))
     {
@@ -78,7 +80,7 @@ static async Task<int> RunCliAsync(string[] args)
 
     var indexer = sp.GetRequiredService<DelphiIndexer>();
     var embedder = sp.GetRequiredService<IEmbeddingService>();
-    await indexer.IndexAsync(library, version, path, embedder);
+    await indexer.IndexAsync(library, version, path, embedder, maxChunks);
     return 0;
 }
 

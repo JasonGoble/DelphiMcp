@@ -9,10 +9,12 @@ public class DelphiIndexer(SqliteVectorStore store)
     private readonly SqliteVectorStore _store = store;
     private const int BatchSize = 25;
 
-    public async Task IndexAsync(string library, string version, string rootPath, IEmbeddingService embedder)
+    public async Task IndexAsync(string library, string version, string rootPath, IEmbeddingService embedder, int? maxChunks = null)
     {
         int existing = _store.CountChunks(library, version);
         Console.Error.WriteLine($"Resuming from {existing} existing chunks for {library} {version}...");
+        if (maxChunks.HasValue)
+            Console.Error.WriteLine($"Limiting to {maxChunks} chunks (test mode)");
 
         int total = existing;
         int skipped = 0;
@@ -21,6 +23,9 @@ public class DelphiIndexer(SqliteVectorStore store)
         foreach (var chunk in DelphiChunker.ChunkDirectory(rootPath, library, version))
         {
             if (skipped < existing) { skipped++; continue; }
+
+            if (maxChunks.HasValue && total >= maxChunks)
+                break;
 
             batch.Add(chunk);
             if (batch.Count >= BatchSize)
