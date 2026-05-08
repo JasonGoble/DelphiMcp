@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+*.user
+.vs/
+
+# Local config + secrets
+appsettings.Development.json
+appsettings.Local.json
+
+# Vector DB (rebuildable)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS
+Thumbs.db
+.DS_Store
