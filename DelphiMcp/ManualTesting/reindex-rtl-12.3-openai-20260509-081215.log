@@ -1,0 +1,15 @@
+WARNING: OpenAI API key not found, embedding will fail
+Embedder: OpenAI (text-embedding-3-small)
+[2026-05-09T12:12:17.9895537Z] Resuming from 0 existing chunks for rtl 12.3-openai...
+Unhandled exception. System.ClientModel.ClientResultException: HTTP 401 (invalid_request_error: invalid_api_key)
+
+Incorrect API key provided: MISSING_KEY. You can find your API key at https://platform.openai.com/account/api-keys.
+   at OpenAI.ClientPipelineExtensions.ProcessMessageAsync(ClientPipeline pipeline, PipelineMessage message, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(BinaryContent content, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(IEnumerable`1 inputs, EmbeddingGenerationOptions options, RequestOptions requestOptions)
+   at DelphiMcp.Embedder.OpenAiEmbeddingService.EmbedBatchAsync(List`1 texts) in E:\code\DelphiMcp\DelphiMcp\Embedder\OpenAiEmbeddingService.cs:line 27
+   at DelphiMcp.Indexer.DelphiIndexer.FlushAsync(List`1 batch, IEmbeddingService embedder) in E:\code\DelphiMcp\DelphiMcp\Indexer\DelphiIndexer.cs:line 55
+   at DelphiMcp.Indexer.DelphiIndexer.IndexAsync(String library, String version, String rootPath, IEmbeddingService embedder, Nullable`1 maxChunks) in E:\code\DelphiMcp\DelphiMcp\Indexer\DelphiIndexer.cs:line 35
+   at Program.<<Main>$>g__RunCliAsync|0_2(String[] args) in E:\code\DelphiMcp\DelphiMcp\Program.cs:line 136
+   at Program.<Main>$(String[] args) in E:\code\DelphiMcp\DelphiMcp\Program.cs:line 14
+   at Program.<Main>(String[] args)

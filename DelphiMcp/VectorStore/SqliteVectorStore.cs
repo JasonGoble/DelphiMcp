@@ -1,27 +1,43 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
+using System.Diagnostics;
 using DelphiMcp.Chunker;
+using Faiss.Cpu.Extensions;
+using Faiss.Cpu.Indexes;
+using Faiss.Cpu.Indexes.Flat;
+using Faiss.Cpu.Indexes.Mapped;
+using Faiss.Cpu.Interfaces;
+using Faiss.Cpu.Serializer;
+using Faiss.Models;
 using Microsoft.Data.Sqlite;
 
 namespace DelphiMcp.VectorStore;
 
 /// <summary>
-/// SQLite-backed chunk store with in-memory cosine KNN.
+/// SQLite-backed chunk store with Faiss-backed cosine KNN.
 ///
 /// Layout: one row per chunk in `chunks` (library, version, metadata, content, embedding BLOB).
-/// Query path: load all rows matching (library, optional version) into a cached float[][]
-/// matrix on first query, then brute-force cosine. For ~100k chunks × 1536 dims this is
-/// well under 100ms per query and avoids any native vector-extension dependency.
+/// Query path: load rows matching (library, optional version), build/load a Faiss index,
+/// and search nearest neighbors by inner product on normalized vectors (cosine similarity).
+/// Falls back to in-memory brute-force if Faiss is unavailable for any reason.
 /// </summary>
 public class SqliteVectorStore : IDisposable
 {
     private readonly SqliteConnection _conn;
+    private readonly string? _faissIndexDir;
     private readonly Dictionary<string, CachedMatrix> _cache = new();
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
-    public SqliteVectorStore(string dbPath)
+    public SqliteVectorStore(string dbPath, string? faissIndexDir = null)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+        if (!string.IsNullOrWhiteSpace(faissIndexDir))
+        {
+            _faissIndexDir = Path.GetFullPath(faissIndexDir);
+            Directory.CreateDirectory(_faissIndexDir);
+        }
 
         _conn = new SqliteConnection($"Data Source={dbPath}");
         _conn.Open();
@@ -139,13 +155,36 @@ public class SqliteVectorStore : IDisposable
     public async Task<List<SearchHit>> SearchAsync(
         string library, string? version, float[] queryVec, int topK)
     {
+        var sw = Stopwatch.StartNew();
         var matrix = await LoadMatrixAsync(library, version);
-        if (matrix.RowIds.Length == 0) return [];
+        if (matrix.RowIds.Length == 0)
+        {
+            sw.Stop();
+            Console.Error.WriteLine($"[search] backend=none library={library} version={version ?? "*"} candidates=0 topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
+            return [];
+        }
 
         // Normalize once (cosine) — matrix is pre-normalized, so dot product == cosine similarity.
         float[] q = Normalize(queryVec);
 
-        // Score every row, keep top-K via partial selection.
+        if (matrix.FaissIndex is not null)
+        {
+            using var result = matrix.FaissIndex.Search(q, topK);
+            var faissHits = new List<SearchHit>(result.Length);
+            for (int i = 0; i < result.Length; i++)
+            {
+                long id = result.Labels[i];
+                if (id < 0) continue;
+                if (!matrix.MetaIndexById.TryGetValue(id, out int metaIdx)) continue;
+                float sim = result.Distances[i];
+                faissHits.Add(matrix.Metadata[metaIdx] with { Distance = 1f - sim });
+            }
+            sw.Stop();
+            Console.Error.WriteLine($"[search] backend=faiss library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
+            return faissHits;
+        }
+
+        // Fallback path if Faiss is unavailable.
         var scores = new float[matrix.RowIds.Length];
         var emb = matrix.Embeddings;
         int dim = q.Length;
@@ -166,7 +205,25 @@ public class SqliteVectorStore : IDisposable
         var hits = new List<SearchHit>(idx.Length);
         foreach (var i in idx)
             hits.Add(matrix.Metadata[i] with { Distance = 1f - scores[i] });
+        sw.Stop();
+        Console.Error.WriteLine($"[search] backend=bruteforce library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
         return hits;
+    }
+
+    public float[]? GetSampleEmbedding(string library, string? version = null)
+    {
+        using var cmd = _conn.CreateCommand();
+        var sql = "SELECT embedding FROM chunks WHERE library = $lib";
+        if (version is not null) sql += " AND version = $ver";
+        sql += " ORDER BY id LIMIT 1";
+
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$lib", library);
+        if (version is not null) cmd.Parameters.AddWithValue("$ver", version);
+
+        var value = cmd.ExecuteScalar();
+        if (value is not byte[] blob) return null;
+        return Normalize(DecodeEmbedding(blob));
     }
 
     public List<SearchHit> FindByIdentifier(string library, string? version, string identifier, string chunkType)
@@ -228,11 +285,13 @@ public class SqliteVectorStore : IDisposable
             var ids = new List<long>();
             var embs = new List<float[]>();
             var metas = new List<SearchHit>();
+            var idToMeta = new Dictionary<long, int>();
 
             using var rdr = cmd.ExecuteReader();
             while (rdr.Read())
             {
                 ids.Add(rdr.GetInt64(0));
+                idToMeta[rdr.GetInt64(0)] = metas.Count;
                 metas.Add(new SearchHit(
                     Id: rdr.GetInt64(0),
                     Library: rdr.GetString(1),
@@ -251,7 +310,30 @@ public class SqliteVectorStore : IDisposable
                 embs.Add(Normalize(DecodeEmbedding(blob)));
             }
 
-            cached = new CachedMatrix(ids.ToArray(), embs.ToArray(), metas.ToArray());
+            var faissSw = Stopwatch.StartNew();
+            INativeIndex? faissIndex = TryLoadOrBuildFaissIndex(
+                library,
+                version,
+                ids,
+                embs,
+                idToMeta.Count > 0 ? embs[0].Length : 0);
+            faissSw.Stop();
+
+            if (faissIndex is null)
+            {
+                Console.Error.WriteLine($"[faiss] disabled library={library} version={version ?? "*"} rows={ids.Count}; using brute-force cache");
+            }
+            else
+            {
+                Console.Error.WriteLine($"[faiss] ready library={library} version={version ?? "*"} rows={ids.Count} elapsedMs={faissSw.ElapsedMilliseconds}");
+            }
+
+            cached = new CachedMatrix(
+                ids.ToArray(),
+                embs.ToArray(),
+                metas.ToArray(),
+                idToMeta,
+                faissIndex);
             _cache[key] = cached;
             return cached;
         }
@@ -267,9 +349,80 @@ public class SqliteVectorStore : IDisposable
         try
         {
             var stale = _cache.Keys.Where(k => k.StartsWith(library + "|")).ToList();
-            foreach (var k in stale) _cache.Remove(k);
+            foreach (var k in stale)
+            {
+                if (_cache.TryGetValue(k, out var cached))
+                    cached.FaissIndex?.Dispose();
+                _cache.Remove(k);
+            }
         }
         finally { _cacheLock.Release(); }
+    }
+
+    private INativeIndex? TryLoadOrBuildFaissIndex(
+        string library,
+        string? version,
+        List<long> ids,
+        List<float[]> embs,
+        int dim)
+    {
+        if (string.IsNullOrWhiteSpace(_faissIndexDir))
+        {
+            Console.Error.WriteLine("[faiss] Storage:FaissIndexDir is not configured; skipping Faiss");
+            return null;
+        }
+        if (ids.Count == 0 || dim <= 0) return null;
+
+        string path = GetFaissIndexPath(library, version);
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                Console.Error.WriteLine($"[faiss] loading index: {path}");
+                return IndexDeserializer.Read<GenericIndex>(path, IoFlags.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[faiss] load failed ({ex.GetType().Name}: {ex.Message}); rebuilding index for {library} {version ?? "*"}");
+        }
+
+        try
+        {
+            var inner = new IndexFlatIP(dim);
+            var mapped = new IndexIDMap<IndexFlatIP>(inner, takeOwnership: true);
+
+            var flat = new float[ids.Count * dim];
+            for (int i = 0; i < ids.Count; i++)
+            {
+                var row = embs[i];
+                row.CopyTo(flat.AsSpan(i * dim, dim));
+            }
+
+            mapped.Add(ids.Count, flat, CollectionsMarshal.AsSpan(ids));
+            IndexSerializer.Write(mapped, path);
+            Console.Error.WriteLine($"[faiss] built and persisted index: {path}");
+            return mapped;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[faiss] build failed ({ex.GetType().Name}: {ex.Message}); fallback to brute-force enabled");
+            return null;
+        }
+    }
+
+    private string GetFaissIndexPath(string library, string? version)
+    {
+        var fileName = $"{SanitizeSegment(library)}__{SanitizeSegment(version ?? "all")}.faiss";
+        return Path.Combine(_faissIndexDir!, fileName);
+    }
+
+    private static string SanitizeSegment(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        return new string(chars);
     }
 
     private static byte[] EncodeEmbedding(float[] vec)
@@ -301,10 +454,17 @@ public class SqliteVectorStore : IDisposable
         return r;
     }
 
-    private record CachedMatrix(long[] RowIds, float[][] Embeddings, SearchHit[] Metadata);
+    private record CachedMatrix(
+        long[] RowIds,
+        float[][] Embeddings,
+        SearchHit[] Metadata,
+        Dictionary<long, int> MetaIndexById,
+        INativeIndex? FaissIndex);
 
     public void Dispose()
     {
+        foreach (var cached in _cache.Values)
+            cached.FaissIndex?.Dispose();
         _conn.Dispose();
         _cacheLock.Dispose();
     }
