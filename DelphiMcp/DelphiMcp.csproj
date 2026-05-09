@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>DelphiMcp</RootNamespace>
     <AssemblyName>DelphiMcp</AssemblyName>
+    <UserSecretsId>1698b542-f673-47f5-9592-13eac0f281b5</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,8 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
     <PackageReference Include="OpenAI" Version="2.10.0" />
+    <PackageReference Include="Faiss.Net.Native" Version="1.0.0-preview.4" />
+    <PackageReference Include="Faiss.Net.Native.Windows" Version="1.0.0-preview.4" />
   </ItemGroup>
 
 </Project>

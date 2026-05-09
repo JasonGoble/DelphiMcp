@@ -1,0 +1,5 @@
+C:\Program Files\dotnet\sdk\10.0.203\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.Sdk.targets(308,5): warning NETSDK1206: Found version-specific or distribution-specific runtime identifier(s): macos-arm64, macos-x64. Affected libraries: Faiss.NET.Native.MacOS. In .NET 8.0 and higher, assets for version-specific and distribution-specific runtime identifiers will not be found by default. See https://aka.ms/dotnet/rid-usage for details. [E:\code\DelphiMcp\DelphiMcp\DelphiMcp.csproj]
+WARNING: OpenAI API key not found, embedding will fail
+Embedder: OpenAI (text-embedding-3-small)
+[2026-05-09T12:10:09.1095100Z] Resuming from 194921 existing chunks for rtl 13.1...
+[2026-05-09T12:10:14.7495221Z] Indexing complete. Total chunks for rtl 13.1: 194921 (elapsed 00:00:08.7347177)
