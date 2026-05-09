@@ -25,7 +25,8 @@ public class DelphiSearcher(SqliteVectorStore store, IEmbeddingService embedder)
         for (int i = 0; i < hits.Count; i++)
         {
             var h = hits[i];
-            sb.AppendLine($"--- [{i + 1}] {h.UnitName}.{h.Identifier} ({h.ChunkType}, {h.Section}, {h.Library} {h.Version}, line {h.StartLine}) [distance: {h.Distance:F4}] ---");
+            string visibility = h.Visibility ?? "public";
+            sb.AppendLine($"--- [{i + 1}] {h.UnitName}.{h.Identifier} ({h.ChunkType}, {h.Section}, visibility {visibility}, {h.Library} {h.Version}, line {h.StartLine}) [distance: {h.Distance:F4}] ---");
             sb.AppendLine(h.Content);
             sb.AppendLine();
         }
@@ -40,8 +41,9 @@ public class DelphiSearcher(SqliteVectorStore store, IEmbeddingService embedder)
         {
             // Forward declarations are short; the real class body is much larger.
             var best = exact.OrderByDescending(h => h.Content.Length).First();
+            var visibility = best.Visibility ?? "public";
             var sb = new StringBuilder();
-            sb.AppendLine($"--- {best.UnitName}.{className} ({best.Library} {best.Version}, type declaration) ---");
+            sb.AppendLine($"--- {best.UnitName}.{className} ({best.Library} {best.Version}, type declaration, visibility {visibility}) ---");
             sb.AppendLine(best.Content);
             return sb.ToString();
         }

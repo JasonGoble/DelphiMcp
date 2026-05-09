@@ -31,7 +31,7 @@ public class SqliteVectorStore : IDisposable
     private readonly float _namespaceBoostFactor;
     private readonly int _namespaceOversampleFactor;
 
-    public SqliteVectorStore(string dbPath, string? faissIndexDir = null, 
+    public SqliteVectorStore(string dbPath, string? faissIndexDir = null,
         IEnumerable<string>? prioritizedNamespaces = null, float namespaceBoostFactor = 0.95f,
         int namespaceOversampleFactor = 5)
     {
@@ -46,7 +46,7 @@ public class SqliteVectorStore : IDisposable
 
         _prioritizedNamespaces = new HashSet<string>(prioritizedNamespaces ?? [], StringComparer.Ordinal);
         _namespaceBoostFactor = namespaceBoostFactor;
-    _namespaceOversampleFactor = Math.Max(1, namespaceOversampleFactor);
+        _namespaceOversampleFactor = Math.Max(1, namespaceOversampleFactor);
 
         _conn = new SqliteConnection($"Data Source={dbPath}");
         _conn.Open();
@@ -63,6 +63,7 @@ public class SqliteVectorStore : IDisposable
                 chunk_type    TEXT NOT NULL,
                 identifier    TEXT NOT NULL,
                 start_line    INTEGER NOT NULL,
+                visibility    TEXT NULL,
                 content       TEXT NOT NULL,
                 embedding     BLOB NOT NULL
             );
@@ -72,6 +73,8 @@ public class SqliteVectorStore : IDisposable
                 ON chunks (library, identifier);
             """;
         cmd.ExecuteNonQuery();
+
+        EnsureColumnExists("chunks", "visibility", "TEXT NULL");
     }
 
     public int CountChunks(string library, string version)
@@ -114,9 +117,9 @@ public class SqliteVectorStore : IDisposable
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO chunks
-                (library, version, unit_name, file_path, section, chunk_type, identifier, start_line, content, embedding)
+                (library, version, unit_name, file_path, section, chunk_type, identifier, start_line, visibility, content, embedding)
             VALUES
-                ($library, $version, $unit, $file, $section, $type, $ident, $line, $content, $emb)
+                ($library, $version, $unit, $file, $section, $type, $ident, $line, $visibility, $content, $emb)
             """;
         var pLib = cmd.Parameters.Add("$library", SqliteType.Text);
         var pVer = cmd.Parameters.Add("$version", SqliteType.Text);
@@ -126,6 +129,7 @@ public class SqliteVectorStore : IDisposable
         var pType = cmd.Parameters.Add("$type", SqliteType.Text);
         var pId = cmd.Parameters.Add("$ident", SqliteType.Text);
         var pLine = cmd.Parameters.Add("$line", SqliteType.Integer);
+        var pVisibility = cmd.Parameters.Add("$visibility", SqliteType.Text);
         var pContent = cmd.Parameters.Add("$content", SqliteType.Text);
         var pEmb = cmd.Parameters.Add("$emb", SqliteType.Blob);
 
@@ -140,6 +144,7 @@ public class SqliteVectorStore : IDisposable
             pType.Value = c.ChunkType;
             pId.Value = c.Identifier;
             pLine.Value = c.StartLine;
+            pVisibility.Value = c.Visibility is null ? DBNull.Value : c.Visibility;
             pContent.Value = c.Content;
             pEmb.Value = EncodeEmbedding(embeddings[i]);
             cmd.ExecuteNonQuery();
@@ -157,6 +162,7 @@ public class SqliteVectorStore : IDisposable
         string ChunkType,
         string Identifier,
         int StartLine,
+        string? Visibility,
         string Content,
         float Distance
     );
@@ -191,7 +197,7 @@ public class SqliteVectorStore : IDisposable
             }
             sw.Stop();
             Console.Error.WriteLine($"[search] backend=faiss library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} requestedTopK={topK} retrieved={candidateCount} elapsedMs={sw.ElapsedMilliseconds}");
-            return ApplyNamespaceBoost(faissHits, topK);
+            return ApplyRankingBoosts(faissHits, topK);
         }
 
         // Fallback path if Faiss is unavailable.
@@ -217,7 +223,7 @@ public class SqliteVectorStore : IDisposable
             hits.Add(matrix.Metadata[i] with { Distance = 1f - scores[i] });
         sw.Stop();
         Console.Error.WriteLine($"[search] backend=bruteforce library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} requestedTopK={topK} retrieved={candidateCount} elapsedMs={sw.ElapsedMilliseconds}");
-        return ApplyNamespaceBoost(hits, topK);
+        return ApplyRankingBoosts(hits, topK);
     }
 
     public float[]? GetSampleEmbedding(string library, string? version = null)
@@ -240,7 +246,7 @@ public class SqliteVectorStore : IDisposable
     {
         using var cmd = _conn.CreateCommand();
         var sql = """
-            SELECT id, library, version, unit_name, file_path, section, chunk_type, identifier, start_line, content
+            SELECT id, library, version, unit_name, file_path, section, chunk_type, identifier, start_line, visibility, content
             FROM chunks
             WHERE library = $lib AND identifier = $ident AND chunk_type = $type
             """;
@@ -266,7 +272,8 @@ public class SqliteVectorStore : IDisposable
                 ChunkType: rdr.GetString(6),
                 Identifier: rdr.GetString(7),
                 StartLine: rdr.GetInt32(8),
-                Content: rdr.GetString(9),
+                Visibility: rdr.IsDBNull(9) ? null : rdr.GetString(9),
+                Content: rdr.GetString(10),
                 Distance: 0f
             ));
         }
@@ -283,7 +290,7 @@ public class SqliteVectorStore : IDisposable
 
             using var cmd = _conn.CreateCommand();
             var sql = """
-                SELECT id, library, version, unit_name, file_path, section, chunk_type, identifier, start_line, content, embedding
+                SELECT id, library, version, unit_name, file_path, section, chunk_type, identifier, start_line, visibility, content, embedding
                 FROM chunks
                 WHERE library = $lib
                 """;
@@ -312,11 +319,12 @@ public class SqliteVectorStore : IDisposable
                     ChunkType: rdr.GetString(6),
                     Identifier: rdr.GetString(7),
                     StartLine: rdr.GetInt32(8),
-                    Content: rdr.GetString(9),
+                    Visibility: rdr.IsDBNull(9) ? null : rdr.GetString(9),
+                    Content: rdr.GetString(10),
                     Distance: 0f
                 ));
 
-                var blob = (byte[])rdr.GetValue(10);
+                var blob = (byte[])rdr.GetValue(11);
                 embs.Add(Normalize(DecodeEmbedding(blob)));
             }
 
@@ -454,23 +462,39 @@ public class SqliteVectorStore : IDisposable
     }
 
     /// <summary>
-    /// Apply namespace-based re-ranking to an oversampled candidate pool, then trim back to the requested top K.
+    /// Apply namespace and visibility boosts to an oversampled candidate pool, then trim back to the requested top K.
     /// </summary>
-    private List<SearchHit> ApplyNamespaceBoost(List<SearchHit> hits, int topK)
+    private List<SearchHit> ApplyRankingBoosts(List<SearchHit> hits, int topK)
     {
-        if (_prioritizedNamespaces.Count == 0) return [.. hits.Take(topK)];
+        if (topK <= 0 || hits.Count == 0) return [];
 
-        var boosted = hits.Select(hit =>
+        var reranked = hits.Select(hit =>
         {
-            var ns = ExtractNamespace(hit.UnitName);
-            if (_prioritizedNamespaces.Contains(ns))
-                return hit with { Distance = hit.Distance * _namespaceBoostFactor };
-            return hit;
-        }).ToList();
+            float adjustedDistance = hit.Distance;
 
-        // Re-sort by boosted distance (ascending = best matches first) and trim to the requested top K.
-        return [..boosted.OrderBy(h => h.Distance).Take(topK)];
+            if (_prioritizedNamespaces.Count > 0)
+            {
+                var ns = ExtractNamespace(hit.UnitName);
+                if (_prioritizedNamespaces.Contains(ns))
+                    adjustedDistance *= _namespaceBoostFactor;
+            }
+
+            adjustedDistance *= GetVisibilityBoostFactor(hit.Visibility);
+            return hit with { Distance = adjustedDistance };
+        });
+
+        return [.. reranked.OrderBy(h => h.Distance).Take(topK)];
     }
+
+    private static float GetVisibilityBoostFactor(string? visibility) => visibility?.ToLowerInvariant() switch
+    {
+        "published" => 0.94f,
+        "public" => 0.97f,
+        "protected" => 1.02f,
+        "private" => 1.05f,
+        null or "" => 0.97f,
+        _ => 0.97f
+    };
 
     private int ResolveCandidateCount(int topK, int availableCount)
     {
@@ -488,6 +512,23 @@ public class SqliteVectorStore : IDisposable
     {
         int dotIndex = unitName.IndexOf('.');
         return dotIndex > 0 ? unitName.Substring(0, dotIndex) : unitName;
+    }
+
+    private void EnsureColumnExists(string tableName, string columnName, string columnDefinition)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({tableName})";
+
+        using var rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            if (string.Equals(rdr.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+
+        using var alter = _conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition}";
+        alter.ExecuteNonQuery();
     }
 
     private static float[] Normalize(float[] v)
