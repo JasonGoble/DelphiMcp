@@ -29,9 +29,11 @@ public class SqliteVectorStore : IDisposable
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
     private readonly HashSet<string> _prioritizedNamespaces;
     private readonly float _namespaceBoostFactor;
+    private readonly int _namespaceOversampleFactor;
 
     public SqliteVectorStore(string dbPath, string? faissIndexDir = null, 
-        IEnumerable<string>? prioritizedNamespaces = null, float namespaceBoostFactor = 0.95f)
+        IEnumerable<string>? prioritizedNamespaces = null, float namespaceBoostFactor = 0.95f,
+        int namespaceOversampleFactor = 5)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -44,6 +46,7 @@ public class SqliteVectorStore : IDisposable
 
         _prioritizedNamespaces = new HashSet<string>(prioritizedNamespaces ?? [], StringComparer.Ordinal);
         _namespaceBoostFactor = namespaceBoostFactor;
+    _namespaceOversampleFactor = Math.Max(1, namespaceOversampleFactor);
 
         _conn = new SqliteConnection($"Data Source={dbPath}");
         _conn.Open();
@@ -172,10 +175,11 @@ public class SqliteVectorStore : IDisposable
 
         // Normalize once (cosine) — matrix is pre-normalized, so dot product == cosine similarity.
         float[] q = Normalize(queryVec);
+        int candidateCount = ResolveCandidateCount(topK, matrix.RowIds.Length);
 
         if (matrix.FaissIndex is not null)
         {
-            using var result = matrix.FaissIndex.Search(q, topK);
+            using var result = matrix.FaissIndex.Search(q, candidateCount);
             var faissHits = new List<SearchHit>(result.Length);
             for (int i = 0; i < result.Length; i++)
             {
@@ -186,8 +190,8 @@ public class SqliteVectorStore : IDisposable
                 faissHits.Add(matrix.Metadata[metaIdx] with { Distance = 1f - sim });
             }
             sw.Stop();
-            Console.Error.WriteLine($"[search] backend=faiss library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
-            return ApplyNamespaceBoost(faissHits);
+            Console.Error.WriteLine($"[search] backend=faiss library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} requestedTopK={topK} retrieved={candidateCount} elapsedMs={sw.ElapsedMilliseconds}");
+            return ApplyNamespaceBoost(faissHits, topK);
         }
 
         // Fallback path if Faiss is unavailable.
@@ -205,15 +209,15 @@ public class SqliteVectorStore : IDisposable
         // Top-K by descending similarity → ascending distance (1 - sim).
         var idx = Enumerable.Range(0, scores.Length)
             .OrderByDescending(i => scores[i])
-            .Take(topK)
+            .Take(candidateCount)
             .ToArray();
 
         var hits = new List<SearchHit>(idx.Length);
         foreach (var i in idx)
             hits.Add(matrix.Metadata[i] with { Distance = 1f - scores[i] });
         sw.Stop();
-        Console.Error.WriteLine($"[search] backend=bruteforce library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
-        return ApplyNamespaceBoost(hits);
+        Console.Error.WriteLine($"[search] backend=bruteforce library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} requestedTopK={topK} retrieved={candidateCount} elapsedMs={sw.ElapsedMilliseconds}");
+        return ApplyNamespaceBoost(hits, topK);
     }
 
     public float[]? GetSampleEmbedding(string library, string? version = null)
@@ -450,12 +454,11 @@ public class SqliteVectorStore : IDisposable
     }
 
     /// <summary>
-    /// Apply namespace-based re-ranking to boost core Delphi libraries (System, Vcl, FMX, FireDAC).
-    /// Multiplies distance by boost factor for matching namespaces, reducing their distances.
+    /// Apply namespace-based re-ranking to an oversampled candidate pool, then trim back to the requested top K.
     /// </summary>
-    private List<SearchHit> ApplyNamespaceBoost(List<SearchHit> hits)
+    private List<SearchHit> ApplyNamespaceBoost(List<SearchHit> hits, int topK)
     {
-        if (_prioritizedNamespaces.Count == 0) return hits;
+        if (_prioritizedNamespaces.Count == 0) return [.. hits.Take(topK)];
 
         var boosted = hits.Select(hit =>
         {
@@ -465,8 +468,17 @@ public class SqliteVectorStore : IDisposable
             return hit;
         }).ToList();
 
-        // Re-sort by boosted distance (ascending = best matches first)
-        return [..boosted.OrderBy(h => h.Distance)];
+        // Re-sort by boosted distance (ascending = best matches first) and trim to the requested top K.
+        return [..boosted.OrderBy(h => h.Distance).Take(topK)];
+    }
+
+    private int ResolveCandidateCount(int topK, int availableCount)
+    {
+        if (topK <= 0) return 0;
+        if (_prioritizedNamespaces.Count == 0) return Math.Min(topK, availableCount);
+
+        long oversampled = (long)topK * _namespaceOversampleFactor;
+        return (int)Math.Min(availableCount, oversampled);
     }
 
     /// <summary>

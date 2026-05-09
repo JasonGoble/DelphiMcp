@@ -52,6 +52,9 @@ DelphiMcp                # stdio transport — point your Claude config at the e
 - `Ollama:BaseUrl`, `Ollama:Model`
 - `Storage:DbPath` — path to the SQLite file (default: alongside the executable)
 - `Storage:FaissIndexDir` — optional path for Faiss index files (default: `faiss-indexes` next to DB)
+- `Search:PrioritizedNamespaces` — namespace prefixes to favor during candidate selection and final ranking
+- `Search:NamespaceBoostFactor` — multiplier applied to distances for prioritized namespaces (default: `0.95`)
+- `Search:NamespaceOversampleFactor` — how many extra candidates to retrieve before reranking (default: `5`)
 
 ## Performance Characteristics
 
@@ -60,7 +63,7 @@ DelphiMcp                # stdio transport — point your Claude config at the e
   - OpenAI (text-embedding-3-small, 1536-dim): ~97ms avg per query
 - **Index scale**: Successfully indexed 194,921 chunks (RTL 13.1) and 185,624 chunks (RTL 12.3)
 - **Index type**: Exact (`IndexFlatIP` with ID mapping); approximate indexes (HNSW, IVF) deferred for future evaluation
-- **Namespace prioritization**: Search results are re-ranked to prioritize core Delphi namespaces (System, Vcl, FMX, FireDAC) using a configurable boost factor. See ADR 0003.
+- **Namespace prioritization**: Search retrieves an oversampled candidate pool, boosts core Delphi namespaces (System, Vcl, FMX, FireDAC), then returns the final top K. This improves recall for canonical library results as well as final ordering. See ADR 0003.
 
 ## Quality & Testing
 
