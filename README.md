@@ -60,6 +60,7 @@ DelphiMcp                # stdio transport — point your Claude config at the e
   - OpenAI (text-embedding-3-small, 1536-dim): ~97ms avg per query
 - **Index scale**: Successfully indexed 194,921 chunks (RTL 13.1) and 185,624 chunks (RTL 12.3)
 - **Index type**: Exact (`IndexFlatIP` with ID mapping); approximate indexes (HNSW, IVF) deferred for future evaluation
+- **Namespace prioritization**: Search results are re-ranked to prioritize core Delphi namespaces (System, Vcl, FMX, FireDAC) using a configurable boost factor. See ADR 0003.
 
 ## Quality & Testing
 
@@ -69,9 +70,7 @@ Embedder quality comparison available in `ManualTesting/` folder:
 
 ## Architecture Decisions
 
-Key design decisions are documented in `docs/decisions/`:
-- [ADR 0001: Issue Title Prefix and Label Convention](docs/decisions/0001-issue-title-and-label-convention.md)
-- [ADR 0002: Faiss Native Vector Search Integration](docs/decisions/0002-faiss-native-vector-search.md)
+See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Architecture Decision Records (ADRs) and their purpose.
 
 ## Status
 
