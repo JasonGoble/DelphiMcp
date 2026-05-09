@@ -24,7 +24,8 @@ builder.Services.AddSingleton(sp =>
 {
     var dbPath = ResolveDbPath(builder.Configuration);
     var faissIndexDir = ResolveFaissIndexDir(builder.Configuration, dbPath);
-    return new SqliteVectorStore(dbPath, faissIndexDir);
+    var (namespaces, boostFactor) = ResolveNamespacePriorities(builder.Configuration);
+    return new SqliteVectorStore(dbPath, faissIndexDir, namespaces, boostFactor);
 });
 builder.Services.AddSingleton<DelphiIndexer>();
 builder.Services.AddSingleton<DelphiSearcher>();
@@ -48,7 +49,8 @@ static async Task<int> RunCliAsync(string[] args)
     {
         var dbPath = ResolveDbPath(cfg);
         var faissIndexDir = ResolveFaissIndexDir(cfg, dbPath);
-        return new SqliteVectorStore(dbPath, faissIndexDir);
+        var (namespaces, boostFactor) = ResolveNamespacePriorities(cfg);
+        return new SqliteVectorStore(dbPath, faissIndexDir, namespaces, boostFactor);
     });
     services.AddSingleton<DelphiIndexer>();
     var sp = services.BuildServiceProvider();
@@ -329,6 +331,17 @@ static string ResolveFaissIndexDir(IConfiguration cfg, string dbPath)
 
     var baseDir = Path.GetDirectoryName(Path.GetFullPath(dbPath)) ?? AppContext.BaseDirectory;
     return Path.Combine(baseDir, "faiss-indexes");
+}
+
+static (List<string> namespaces, float boostFactor) ResolveNamespacePriorities(IConfiguration cfg)
+{
+    var namespaces = new List<string>();
+    cfg.GetSection("Search:PrioritizedNamespaces").Bind(namespaces);
+    
+    var boostFactorStr = cfg["Search:NamespaceBoostFactor"] ?? "0.95";
+    float boostFactor = float.TryParse(boostFactorStr, out var bf) ? bf : 0.95f;
+    
+    return (namespaces.Count > 0 ? namespaces : new List<string> { "System", "Vcl", "FMX", "FireDAC" }, boostFactor);
 }
 
 static void RegisterEmbedder(IServiceCollection services, IConfiguration cfg)
