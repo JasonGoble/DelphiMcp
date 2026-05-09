@@ -64,12 +64,14 @@ DelphiMcp                # stdio transport — point your Claude config at the e
 - **Index scale**: Successfully indexed 194,921 chunks (RTL 13.1) and 185,624 chunks (RTL 12.3)
 - **Index type**: Exact (`IndexFlatIP` with ID mapping); approximate indexes (HNSW, IVF) deferred for future evaluation
 - **Namespace prioritization**: Search retrieves an oversampled candidate pool, boosts core Delphi namespaces (System, Vcl, FMX, FireDAC), then returns the final top K. This improves recall for canonical library results as well as final ordering. See ADR 0003.
+- **Visibility metadata**: Chunks now carry inferred `published` / `public` / `protected` / `private` visibility, and search re-ranks close matches toward more accessible declarations. Existing databases migrate in place, but older rows remain visibility-null until reindexed. See ADR 0004.
 
 ## Quality & Testing
 
 Embedder quality comparison available in `ManualTesting/` folder:
 - **comparison-results.md**: Top-5 ranked search results for 14 test queries (Ollama vs OpenAI)
 - **Indexing logs**: Full execution traces for Ollama and OpenAI production runs
+- **Automated tests**: `dotnet test DelphiMcp.Tests/DelphiMcp.Tests.csproj` covers visibility extraction, schema migration, and visibility-aware ranking order
 
 ## Architecture Decisions
 

@@ -12,7 +12,8 @@ public record DelphiChunk(
     string ChunkType,
     string Identifier,
     string Content,
-    int StartLine
+    int StartLine,
+    string? Visibility
 );
 
 public static class DelphiChunker
@@ -24,6 +25,10 @@ public static class DelphiChunker
     private static readonly Regex RoutinePattern = new(
         @"^\s{0,4}(procedure|function|constructor|destructor)\s+([\w\.]+)",
         RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+    private static readonly Regex VisibilityPattern = new(
+        @"^\s*(published|public|protected|private|strict\s+protected|strict\s+private)\s*$",
+        RegexOptions.IgnoreCase);
 
     private static readonly Regex BeginKeyword = new(@"\bbegin\b", RegexOptions.IgnoreCase);
     private static readonly Regex EndKeyword = new(@"\bend\b", RegexOptions.IgnoreCase);
@@ -52,7 +57,8 @@ public static class DelphiChunker
             ChunkType: "unit_header",
             Identifier: unitName,
             Content: string.Join(Environment.NewLine, headerLines),
-            StartLine: 0
+            StartLine: 0,
+            Visibility: null
         );
 
         string currentSection = "interface";
@@ -156,7 +162,8 @@ public static class DelphiChunker
             ChunkType: "type",
             Identifier: identifier,
             Content: content,
-            StartLine: startLine
+            StartLine: startLine,
+            Visibility: InferTypeVisibility(lines, startLine, i, section)
         ), i);
     }
 
@@ -175,9 +182,13 @@ public static class DelphiChunker
             string line = lines[i];
             sb.AppendLine(line);
 
-            if (section == "interface" && i > startLine + 5) { i++; break; }
-
             string scanLine = StripCommentsAndStrings(line);
+            if (section == "interface" && scanLine.Contains(';'))
+            {
+                i++;
+                break;
+            }
+
             int begins = BeginKeyword.Matches(scanLine).Count;
             int ends = EndKeyword.Matches(scanLine).Count;
 
@@ -202,9 +213,70 @@ public static class DelphiChunker
             ChunkType: "routine",
             Identifier: identifier,
             Content: content,
-            StartLine: startLine
+            StartLine: startLine,
+            Visibility: InferRoutineVisibility(section)
         ), i);
     }
+
+    private static string InferTypeVisibility(string[] lines, int startLine, int endLine, string section)
+    {
+        string bestVisibility = InferRoutineVisibility(section);
+        int bestPriority = GetVisibilityPriority(bestVisibility);
+        int scanLimit = Math.Min(endLine, lines.Length);
+
+        for (int i = startLine; i < scanLimit; i++)
+        {
+            var visibility = TryExtractVisibility(lines[i]);
+            if (visibility is null)
+                continue;
+
+            int priority = GetVisibilityPriority(visibility);
+            if (priority < bestPriority)
+            {
+                bestVisibility = visibility;
+                bestPriority = priority;
+                if (bestPriority == 0)
+                    break;
+            }
+        }
+
+        return bestVisibility;
+    }
+
+    private static string InferRoutineVisibility(string section) =>
+        string.Equals(section, "implementation", StringComparison.OrdinalIgnoreCase)
+            ? "private"
+            : "public";
+
+    private static string? TryExtractVisibility(string line)
+    {
+        string scan = StripCommentsAndStrings(line).Trim();
+        var match = VisibilityPattern.Match(scan);
+        if (!match.Success)
+            return null;
+
+        return NormalizeVisibility(match.Groups[1].Value);
+    }
+
+    private static string NormalizeVisibility(string visibility)
+    {
+        var normalized = Regex.Replace(visibility.Trim().ToLowerInvariant(), @"\s+", " ");
+        return normalized switch
+        {
+            "strict private" => "private",
+            "strict protected" => "protected",
+            _ => normalized
+        };
+    }
+
+    private static int GetVisibilityPriority(string? visibility) => visibility switch
+    {
+        "published" => 0,
+        "public" or null => 1,
+        "protected" => 2,
+        "private" => 3,
+        _ => 1
+    };
 
     private static string StripCommentsAndStrings(string line)
     {
