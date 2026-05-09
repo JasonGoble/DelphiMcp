@@ -27,8 +27,11 @@ public class SqliteVectorStore : IDisposable
     private readonly string? _faissIndexDir;
     private readonly Dictionary<string, CachedMatrix> _cache = new();
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private readonly HashSet<string> _prioritizedNamespaces;
+    private readonly float _namespaceBoostFactor;
 
-    public SqliteVectorStore(string dbPath, string? faissIndexDir = null)
+    public SqliteVectorStore(string dbPath, string? faissIndexDir = null, 
+        IEnumerable<string>? prioritizedNamespaces = null, float namespaceBoostFactor = 0.95f)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
@@ -38,6 +41,9 @@ public class SqliteVectorStore : IDisposable
             _faissIndexDir = Path.GetFullPath(faissIndexDir);
             Directory.CreateDirectory(_faissIndexDir);
         }
+
+        _prioritizedNamespaces = new HashSet<string>(prioritizedNamespaces ?? [], StringComparer.Ordinal);
+        _namespaceBoostFactor = namespaceBoostFactor;
 
         _conn = new SqliteConnection($"Data Source={dbPath}");
         _conn.Open();
@@ -181,7 +187,7 @@ public class SqliteVectorStore : IDisposable
             }
             sw.Stop();
             Console.Error.WriteLine($"[search] backend=faiss library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
-            return faissHits;
+            return ApplyNamespaceBoost(faissHits);
         }
 
         // Fallback path if Faiss is unavailable.
@@ -207,7 +213,7 @@ public class SqliteVectorStore : IDisposable
             hits.Add(matrix.Metadata[i] with { Distance = 1f - scores[i] });
         sw.Stop();
         Console.Error.WriteLine($"[search] backend=bruteforce library={library} version={version ?? "*"} candidates={matrix.RowIds.Length} topK={topK} elapsedMs={sw.ElapsedMilliseconds}");
-        return hits;
+        return ApplyNamespaceBoost(hits);
     }
 
     public float[]? GetSampleEmbedding(string library, string? version = null)
@@ -441,6 +447,35 @@ public class SqliteVectorStore : IDisposable
         for (int i = 0; i < vec.Length; i++)
             vec[i] = BinaryPrimitives.ReadSingleLittleEndian(bytes.AsSpan(i * 4, 4));
         return vec;
+    }
+
+    /// <summary>
+    /// Apply namespace-based re-ranking to boost core Delphi libraries (System, Vcl, FMX, FireDAC).
+    /// Multiplies distance by boost factor for matching namespaces, reducing their distances.
+    /// </summary>
+    private List<SearchHit> ApplyNamespaceBoost(List<SearchHit> hits)
+    {
+        if (_prioritizedNamespaces.Count == 0) return hits;
+
+        var boosted = hits.Select(hit =>
+        {
+            var ns = ExtractNamespace(hit.UnitName);
+            if (_prioritizedNamespaces.Contains(ns))
+                return hit with { Distance = hit.Distance * _namespaceBoostFactor };
+            return hit;
+        }).ToList();
+
+        // Re-sort by boosted distance (ascending = best matches first)
+        return [..boosted.OrderBy(h => h.Distance)];
+    }
+
+    /// <summary>
+    /// Extract namespace prefix from a unit name (e.g., "System.SysUtils" -> "System").
+    /// </summary>
+    private static string ExtractNamespace(string unitName)
+    {
+        int dotIndex = unitName.IndexOf('.');
+        return dotIndex > 0 ? unitName.Substring(0, dotIndex) : unitName;
     }
 
     private static float[] Normalize(float[] v)
