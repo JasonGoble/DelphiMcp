@@ -542,6 +542,13 @@ public class SqliteVectorStore : IDisposable
         return r;
     }
 
+    public async Task VacuumAsync()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "VACUUM;";
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     private record CachedMatrix(
         long[] RowIds,
         float[][] Embeddings,

@@ -12,3 +12,4 @@ This folder contains Architecture Decision Records (ADRs) for the DelphiMcp proj
 - [ADR 0002: Faiss Native Vector Search Integration](0002-faiss-native-vector-search.md)
 - [ADR 0003: Namespace Prioritization in Search Results](0003-namespace-prioritization.md)
 - [ADR 0004: Visibility Metadata in Search Results](0004-visibility-metadata.md)
+- [ADR 0005: Database Vacuum Command](0005-database-vacuum.md)

@@ -29,6 +29,21 @@ DelphiMcp --reset --library rtl                       # delete all RTL chunks
 DelphiMcp --reset --library rtl --version 12.0        # delete only RTL 12.0 chunks
 ```
 
+
+## Vacuum Database
+
+`
+DelphiMcp --vacuum
+`
+
+Compacts the SQLite database file by reclaiming unused space. Run this after bulk --reset operations to recover storage and potentially improve query performance.
+
+**When to use:**
+- After resetting one or more library versions
+- As part of a maintenance workflow (reset → vacuum → reindex)
+- Periodically on large databases to recover fragmented space
+
+**Note:** VACUUM locks the database briefly; do not run during concurrent searches. See ADR 0005 for details.
 ## Benchmark Search
 
 ```
@@ -81,3 +96,4 @@ See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Archi
 
 Local-first scaffold. Hosted ASP.NET Core variant with API-key auth and per-library
 licensing gating is planned for a follow-up pass.
+
