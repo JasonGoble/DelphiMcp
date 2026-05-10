@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
     <PackageReference Include="OpenAI" Version="2.10.0" />
     <PackageReference Include="Faiss.Net.Native" Version="1.0.0-preview.4" />
     <PackageReference Include="Faiss.Net.Native.Windows" Version="1.0.0-preview.4" />

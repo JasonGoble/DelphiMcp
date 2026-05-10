@@ -3,16 +3,26 @@ using DelphiMcp.Embedder;
 using DelphiMcp.Indexer;
 using DelphiMcp.Search;
 using DelphiMcp.VectorStore;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 
 // CLI commands run synchronously then exit; default mode runs the MCP stdio server.
 if (args.Length > 0 && (args[0] == "--index" || args[0] == "--reset" || args[0] == "--bench-search" || args[0] == "--compare-embedders" || args[0] == "--compare-detailed" || args[0] == "--vacuum"))
 {
     return await RunCliAsync(args);
+}
+
+var startupConfig = BuildConfiguration();
+var serverMode = ResolveServerMode(args, startupConfig);
+if (serverMode == "http")
+{
+    return await RunHttpServerAsync(args);
 }
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -39,6 +49,59 @@ LogRegisteredTools();
 
 await builder.Build().RunAsync();
 return 0;
+
+static async Task<int> RunHttpServerAsync(string[] args)
+{
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Services.AddLogging(lb =>
+        lb.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace));
+
+    RegisterEmbedder(builder.Services, builder.Configuration);
+    builder.Services.AddSingleton(sp =>
+    {
+        var dbPath = ResolveDbPath(builder.Configuration);
+        var faissIndexDir = ResolveFaissIndexDir(builder.Configuration, dbPath);
+        var (namespaces, boostFactor, oversampleFactor) = ResolveNamespacePriorities(builder.Configuration);
+        return new SqliteVectorStore(dbPath, faissIndexDir, namespaces, boostFactor, oversampleFactor);
+    });
+    builder.Services.AddSingleton<DelphiIndexer>();
+    builder.Services.AddSingleton<DelphiSearcher>();
+
+    builder.Services
+        .AddMcpServer()
+        .WithHttpTransport()
+        .WithToolsFromAssembly();
+
+    var app = builder.Build();
+    var mcpPath = builder.Configuration["Hosted:Path"] ?? "/mcp";
+    var configuredApiKey = builder.Configuration["Hosted:ApiKey"];
+    if (string.IsNullOrWhiteSpace(configuredApiKey))
+    {
+        throw new InvalidOperationException("Hosted:ApiKey must be configured when running HTTP mode.");
+    }
+
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments(mcpPath, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryReadApiKey(context, out var providedKey) || !string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
+                return;
+            }
+        }
+
+        await next();
+    });
+
+    app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+    app.MapMcp(mcpPath);
+
+    LogRegisteredTools();
+    await app.RunAsync();
+    return 0;
+}
 
 static async Task<int> RunCliAsync(string[] args)
 {
@@ -306,6 +369,41 @@ static string? GetArg(string[] args, string name)
     for (int i = 0; i < args.Length - 1; i++)
         if (args[i] == name) return args[i + 1];
     return null;
+}
+
+static string ResolveServerMode(string[] args, IConfiguration cfg)
+{
+    if (args.Any(a => string.Equals(a, "--http", StringComparison.OrdinalIgnoreCase)))
+        return "http";
+
+    if (args.Any(a => string.Equals(a, "--stdio", StringComparison.OrdinalIgnoreCase)))
+        return "stdio";
+
+    return (cfg["Server:Mode"] ?? "stdio").Trim().ToLowerInvariant();
+}
+
+static bool TryReadApiKey(HttpContext context, out string? key)
+{
+    if (context.Request.Headers.TryGetValue("Authorization", out var authValues))
+    {
+        var raw = authValues.ToString();
+        const string bearerPrefix = "Bearer ";
+        if (raw.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            key = raw[bearerPrefix.Length..].Trim();
+            if (!string.IsNullOrEmpty(key))
+                return true;
+        }
+    }
+
+    if (context.Request.Headers.TryGetValue("X-API-Key", out var apiKeyValues))
+    {
+        key = apiKeyValues.ToString().Trim();
+        return !string.IsNullOrEmpty(key);
+    }
+
+    key = null;
+    return false;
 }
 
 static IConfiguration BuildConfiguration() =>

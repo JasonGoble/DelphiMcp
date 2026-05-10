@@ -116,7 +116,15 @@ DelphiMcp --bench-search --library rtl --version 12.3 --iterations 50 --top-k 10
 
 ```
 DelphiMcp                # stdio transport — point your Claude config at the executable
+DelphiMcp --http         # hosted HTTP transport (requires Hosted:ApiKey)
 ```
+
+In hosted mode, MCP endpoint defaults to `/mcp` and requires an API key sent via one of:
+
+- `Authorization: Bearer <api-key>`
+- `X-API-Key: <api-key>`
+
+Use [docs/setup/iis-and-claude-code.md](docs/setup/iis-and-claude-code.md) for IIS deployment and Claude Code setup.
 
 ## Configuration
 
@@ -127,6 +135,9 @@ DelphiMcp                # stdio transport — point your Claude config at the e
 - `Ollama:BaseUrl`, `Ollama:Model`
 - `Storage:DbPath` — path to the SQLite file (default: alongside the executable)
 - `Storage:FaissIndexDir` — optional path for Faiss index files (default: `faiss-indexes` next to DB)
+- `Server:Mode` — `stdio` (default) or `http`
+- `Hosted:Path` — hosted MCP path (default: `/mcp`)
+- `Hosted:ApiKey` — required when `Server:Mode=http`
 - `Search:PrioritizedNamespaces` — namespace prefixes to favor during candidate selection and final ranking
 - `Search:NamespaceBoostFactor` — multiplier applied to distances for prioritized namespaces (default: `0.95`)
 - `Search:NamespaceOversampleFactor` — how many extra candidates to retrieve before reranking (default: `5`)
@@ -154,6 +165,8 @@ See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Archi
 
 ## Status
 
-Local-first scaffold. Hosted ASP.NET Core variant with API-key auth and per-library
-licensing gating is planned for a follow-up pass.
+Local-first scaffold with dual mode support:
+
+- stdio mode for minimal local Claude Code setup
+- hosted HTTP mode for centralized IIS deployment with API-key authentication
 
