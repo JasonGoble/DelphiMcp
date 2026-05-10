@@ -73,19 +73,35 @@ static async Task<int> RunHttpServerAsync(string[] args)
         .WithToolsFromAssembly();
 
     var app = builder.Build();
+    var logger = app.Logger;
     var mcpPath = builder.Configuration["Hosted:Path"] ?? "/mcp";
     var configuredApiKey = builder.Configuration["Hosted:ApiKey"];
+    var requireHttps = ResolveHostedRequireHttps(builder.Configuration);
     if (string.IsNullOrWhiteSpace(configuredApiKey))
     {
         throw new InvalidOperationException("Hosted:ApiKey must be configured when running HTTP mode.");
+    }
+
+    if (requireHttps)
+    {
+        app.UseHttpsRedirection();
     }
 
     app.Use(async (context, next) =>
     {
         if (context.Request.Path.StartsWithSegments(mcpPath, StringComparison.OrdinalIgnoreCase))
         {
-            if (!TryReadApiKey(context, out var providedKey) || !string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal))
+            var apiKeyPresent = TryReadApiKey(context, out var providedKey, out var apiKeySource);
+            if (!apiKeyPresent || !string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal))
             {
+                logger.LogWarning(
+                    "Unauthorized MCP request. Path={Path}, Method={Method}, Source={Source}, RemoteIp={RemoteIp}, UserAgent={UserAgent}",
+                    context.Request.Path,
+                    context.Request.Method,
+                    apiKeySource,
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    context.Request.Headers.UserAgent.ToString());
+
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
                 return;
@@ -138,8 +154,20 @@ static async Task<int> RunCliAsync(string[] args)
         return 0;
     }
 
-    if (string.IsNullOrEmpty(library))
+    if (mode == "--reset" && string.IsNullOrWhiteSpace(library))
     {
+        Console.Error.WriteLine("Missing --library <name> (e.g. rtl or devexpress)");
+        return 1;
+    }
+
+    if (mode == "--reset")
+    {
+        if (string.IsNullOrWhiteSpace(library))
+        {
+            Console.Error.WriteLine("Missing --library <name> (e.g. rtl or devexpress)");
+            return 1;
+        }
+
         int n = store.DeleteLibrary(library, version);
         Console.Error.WriteLine(version is null
             ? $"Deleted {n} chunks for library '{library}' (all versions)."
@@ -382,7 +410,7 @@ static string ResolveServerMode(string[] args, IConfiguration cfg)
     return (cfg["Server:Mode"] ?? "stdio").Trim().ToLowerInvariant();
 }
 
-static bool TryReadApiKey(HttpContext context, out string? key)
+static bool TryReadApiKey(HttpContext context, out string? key, out string source)
 {
     if (context.Request.Headers.TryGetValue("Authorization", out var authValues))
     {
@@ -392,18 +420,29 @@ static bool TryReadApiKey(HttpContext context, out string? key)
         {
             key = raw[bearerPrefix.Length..].Trim();
             if (!string.IsNullOrEmpty(key))
+            {
+                source = "Authorization:Bearer";
                 return true;
+            }
         }
     }
 
     if (context.Request.Headers.TryGetValue("X-API-Key", out var apiKeyValues))
     {
         key = apiKeyValues.ToString().Trim();
+        source = "X-API-Key";
         return !string.IsNullOrEmpty(key);
     }
 
     key = null;
+    source = "none";
     return false;
+}
+
+static bool ResolveHostedRequireHttps(IConfiguration cfg)
+{
+    var value = cfg["Hosted:RequireHttps"];
+    return bool.TryParse(value, out var requireHttps) && requireHttps;
 }
 
 static IConfiguration BuildConfiguration() =>

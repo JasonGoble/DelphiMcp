@@ -42,6 +42,7 @@ Set these environment variables for the process (IIS or system-level):
 - `Server__Mode=http`
 - `Hosted__ApiKey=<strong-random-key>`
 - `Hosted__Path=/mcp`
+- `Hosted__RequireHttps=true` (recommended in hosted environments)
 - `Storage__DbPath=E:\data\delphi-mcp\delphi-mcp.db`
 - `Storage__FaissIndexDir=E:\data\delphi-mcp\faiss-indexes`
 - `Embedder__Provider=OpenAI` or `Ollama`
@@ -82,6 +83,13 @@ Expected: `401 Unauthorized`.
 
 ```powershell
 curl -i https://<host>/mcp -H "Authorization: Bearer <api-key>"
+```
+
+5. Run smoke test script:
+
+```powershell
+cd E:\code\DelphiMcp
+./scripts/hosted-smoke-test.ps1 -BaseUrl "https://<host>" -ApiKey "<api-key>" -McpPath "/mcp"
 ```
 
 ## 6. Claude Code Setup

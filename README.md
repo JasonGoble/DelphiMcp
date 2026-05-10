@@ -138,6 +138,7 @@ Use [docs/setup/iis-and-claude-code.md](docs/setup/iis-and-claude-code.md) for I
 - `Server:Mode` — `stdio` (default) or `http`
 - `Hosted:Path` — hosted MCP path (default: `/mcp`)
 - `Hosted:ApiKey` — required when `Server:Mode=http`
+- `Hosted:RequireHttps` — when `true`, redirects hosted mode traffic to HTTPS
 - `Search:PrioritizedNamespaces` — namespace prefixes to favor during candidate selection and final ranking
 - `Search:NamespaceBoostFactor` — multiplier applied to distances for prioritized namespaces (default: `0.95`)
 - `Search:NamespaceOversampleFactor` — how many extra candidates to retrieve before reranking (default: `5`)
@@ -162,6 +163,14 @@ Embedder quality comparison available in `ManualTesting/` folder:
 ## Architecture Decisions
 
 See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Architecture Decision Records (ADRs) and their purpose.
+
+## Hosted Smoke Test
+
+Use [scripts/hosted-smoke-test.ps1](scripts/hosted-smoke-test.ps1) to quickly validate hosted deployment behavior:
+
+- `/healthz` returns 200
+- unauthenticated `/mcp` returns 401
+- authenticated `/mcp` is accepted
 
 ## Status
 
