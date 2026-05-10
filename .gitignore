@@ -8,6 +8,9 @@ obj/
 appsettings.Development.json
 appsettings.Local.json
 
+# Run logs
+DelphiMcp/Logs/
+
 # Vector DB (rebuildable)
 *.db
 *.db-journal
