@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 
 // CLI commands run synchronously then exit; default mode runs the MCP stdio server.
-if (args.Length > 0 && (args[0] == "--index" || args[0] == "--reset" || args[0] == "--bench-search" || args[0] == "--compare-embedders" || args[0] == "--compare-detailed"))
+if (args.Length > 0 && (args[0] == "--index" || args[0] == "--reset" || args[0] == "--bench-search" || args[0] == "--compare-embedders" || args[0] == "--compare-detailed" || args[0] == "--vacuum"))
 {
     return await RunCliAsync(args);
 }
@@ -66,15 +66,16 @@ static async Task<int> RunCliAsync(string[] args)
     string? topKStr = GetArg(args, "--top-k");
     int topK = topKStr != null && int.TryParse(topKStr, out int tk) ? tk : 10;
 
-    if (string.IsNullOrEmpty(library))
-    {
-        Console.Error.WriteLine("Missing --library <rtl|devexpress>");
-        return 1;
-    }
-
     var store = sp.GetRequiredService<SqliteVectorStore>();
 
-    if (mode == "--reset")
+    if (mode == "--vacuum")
+    {
+        await store.VacuumAsync();
+        Console.Error.WriteLine("Database vacuumed successfully.");
+        return 0;
+    }
+
+    if (string.IsNullOrEmpty(library))
     {
         int n = store.DeleteLibrary(library, version);
         Console.Error.WriteLine(version is null
