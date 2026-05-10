@@ -13,6 +13,27 @@ component source code via embedding-based search.
 - **MCP tools**: `search_rtl` / `lookup_rtl_class` and `search_devexpress` / `lookup_devexpress_class`.
   All accept an optional `version` filter.
 
+## CLI Quick Reference
+
+- `--index` (requires `--library`, `--version`, `--path`)
+  - Builds or resumes embeddings/chunks for a source tree.
+  - Optional: `--max-chunks <N>` to cap indexing for pilot runs.
+- `--reset` (requires `--library`; optional `--version`)
+  - Deletes indexed chunks for a library (or a specific version).
+- `--vacuum`
+  - Compacts the SQLite database after large deletes.
+- `--bench-search` (requires `--library`; optional `--version`)
+  - Uses stored embeddings to benchmark retrieval latency.
+  - Optional: `--iterations <N>` (default `20`), `--top-k <N>` (default `10`).
+- `--compare-embedders` (requires `--library`, `--version1`, `--version2`)
+  - Compares retrieval overlap and timing across two indexed versions.
+  - Optional: `--provider1`, `--provider2`, `--top-k <N>`.
+- `--compare-detailed` (requires `--library`, `--version1`, `--version2`)
+  - Prints detailed top-K result lists for manual quality review.
+  - Optional: `--provider1`, `--provider2`, `--top-k <N>`.
+- No CLI args
+  - Starts MCP stdio server mode.
+
 ## Indexing
 
 ```
@@ -21,6 +42,12 @@ DelphiMcp --index --library devexpress --version 12.0 --path "C:\Path\To\DevExpr
 ```
 
 Re-running `--index` resumes from the last persisted chunk count (skip-by-count).
+
+Pilot indexing with a safety cap:
+
+```
+DelphiMcp --index --library rtl --version 13.1 --path "C:\Program Files (x86)\Embarcadero\Studio\37.0\source" --max-chunks 5000
+```
 
 ## Reset
 
@@ -32,9 +59,9 @@ DelphiMcp --reset --library rtl --version 12.0        # delete only RTL 12.0 chu
 
 ## Vacuum Database
 
-`
+```
 DelphiMcp --vacuum
-`
+```
 
 Compacts the SQLite database file by reclaiming unused space. Run this after bulk --reset operations to recover storage and potentially improve query performance.
 
@@ -44,6 +71,7 @@ Compacts the SQLite database file by reclaiming unused space. Run this after bul
 - Periodically on large databases to recover fragmented space
 
 **Note:** VACUUM locks the database briefly; do not run during concurrent searches. See ADR 0005 for details.
+
 ## Benchmark Search
 
 ```
@@ -51,6 +79,38 @@ DelphiMcp --bench-search --library rtl --version 12.0 --iterations 50 --top-k 10
 ```
 
 Uses a stored sample embedding (no embed API call required) and reports average query latency.
+
+## MCP Tool Behavior
+
+- `search_rtl` / `search_devexpress`
+  - Semantic search over indexed chunks for the selected library.
+  - Optional `version` narrows results to one indexed version.
+  - Returns ranked results with metadata (for example unit, section, and visibility when available).
+- `lookup_rtl_class` / `lookup_devexpress_class`
+  - Class-oriented lookup for known type names.
+  - Optional `version` narrows lookup scope.
+  - Intended for quick symbol access when class name is already known.
+
+## End-to-End Workflow
+
+Typical maintenance and indexing flow:
+
+```
+# 1) Reset stale data for a version
+DelphiMcp --reset --library rtl --version 12.3
+
+# 2) Optionally compact DB after large deletes
+DelphiMcp --vacuum
+
+# 3) Run a pilot index first (safe cap)
+DelphiMcp --index --library rtl --version 12.3 --path "C:\Program Files (x86)\Embarcadero\Studio\23.0\source" --max-chunks 3000
+
+# 4) Run full indexing
+DelphiMcp --index --library rtl --version 12.3 --path "C:\Program Files (x86)\Embarcadero\Studio\23.0\source"
+
+# 5) Validate retrieval latency
+DelphiMcp --bench-search --library rtl --version 12.3 --iterations 50 --top-k 10
+```
 
 ## Running as MCP server
 
