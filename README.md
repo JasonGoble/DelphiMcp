@@ -23,6 +23,7 @@ component source code via embedding-based search.
   - Contracts/schemas: [ADR 0011](docs/decisions/0011-parse-delphi-structure-contracts.md)
   - Lexer + directive region handling: [ADR 0012](docs/decisions/0012-delphi-lexer-and-preprocessor-regions.md)
   - Structural parser (unit sections + uses + type declarations): [ADR 0013](docs/decisions/0013-delphi-structural-parser-unit-sections.md)
+  - Normalized source renderer (deterministic token-based formatting): [ADR 0014](docs/decisions/0014-normalized-source-renderer.md)
 
 ## CLI Quick Reference
 
