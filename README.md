@@ -13,8 +13,12 @@ component source code via embedding-based search.
   with on-disk index persistence per `(library, version)`. Falls back to in-memory brute-force cosine
   if Faiss cannot load/build.
 - **Chunker**: Pascal-aware. Emits one chunk per type declaration, routine, and unit header.
-- **MCP tools**: `search_rtl` / `lookup_rtl_class` and `search_devexpress` / `lookup_devexpress_class`.
-  All accept an optional `version` filter.
+- **MCP tools (v1.1)**: `search_delphi_source` and `lookup_delphi_class` (unified).
+  - When `library` is specified, searches that library only.
+  - When omitted, uses resolved client profile's `DefaultScopes` (for multi-library searches).
+  - Support optional `version` filtering and multi-version comparison.
+- **Client Access (v1.1)**: Machine profiles with API keys, default scopes, and per-profile query policy enforcement.
+  See [ADR 0007](docs/decisions/0007-machine-profile-client-access-policy.md) and [ADR 0008](docs/decisions/0008-unified-delphi-source-tools.md).
 
 ## CLI Quick Reference
 
@@ -83,16 +87,60 @@ DelphiMcp --bench-search --library rtl --version 12.0 --iterations 50 --top-k 10
 
 Uses a stored sample embedding (no embed API call required) and reports average query latency.
 
-## MCP Tool Behavior
+## MCP Tool Behavior (v1.1)
 
-- `search_rtl` / `search_devexpress`
-  - Semantic search over indexed chunks for the selected library.
-  - Optional `version` narrows results to one indexed version.
-  - Returns ranked results with metadata (for example unit, section, and visibility when available).
-- `lookup_rtl_class` / `lookup_devexpress_class`
-  - Class-oriented lookup for known type names.
-  - Optional `version` narrows lookup scope.
-  - Intended for quick symbol access when class name is already known.
+v1.1 provides **unified Delphi source tools** that work across all indexed libraries. The tools automatically resolve client profiles and enforce query policies.
+
+### `search_delphi_source`
+- **Query parameter**: Natural language search query or symbol name, e.g., `"TStringList thread safety"` or `"cxGrid focused row"`.
+- **Library parameter** (optional):
+  - If specified (e.g., `"rtl"`, `"devexpress"`): Searches that library only.
+  - If omitted: Searches using the resolved client profile's `DefaultScopes` (v1.1 hosted mode) or falls back to common libraries (stdio mode).
+- **Version parameter** (optional): Filters results to a single library version (e.g., `"12.0"`).
+- **topK parameter** (optional, default 5): Number of results to return. Capped by policy limit `MaxTopK`.
+- **Returns**: Ranked search results with metadata (unit, identifier, chunk type, visibility, library, version, line number).
+
+### `lookup_delphi_class`
+- **className parameter**: Class or type name to look up, e.g., `"TStringList"`, `"TcxGrid"`.
+- **Library parameter** (optional):
+  - If specified: Searches that library only.
+  - If omitted: Searches using the resolved client profile's `DefaultScopes` (hosted) or fallback libraries (stdio).
+- **Version parameter** (optional): Filters to a single version.
+- **Versions parameter** (optional): Comma-separated list for multi-version comparison, e.g., `"12.0,11.0"`.
+  - Validates count against policy limit `MaxVersionsPerLibraryPerQuery`.
+  - Returns formatted side-by-side declarations for each version.
+- **Returns**: Class declaration(s) including properties and method signatures.
+
+### Scope Resolution
+
+When `library` is omitted (unscoped query):
+1. **Hosted HTTP mode**: Resolves client profile from `Authorization` header via ClientProfileResolver.
+   - If profile found: Uses its `DefaultScopes`.
+   - If not found: Returns error.
+2. **Stdio mode**: Falls back to searching common libraries (RTL + DevExpress).
+
+### Policy Enforcement
+
+All queries are subject to global and profile-specific policy limits:
+- `MaxTopK`: Maximum results per query (default 10).
+- `MaxVersionsPerLibraryPerQuery`: Maximum versions for multi-version comparison (default 2).
+- `MaxTargetScopesPerQuery`: Maximum library scopes to search when using `DefaultScopes` (default 4).
+- `AllowUnversionedQueries`: Whether to allow queries without a version specified (default true).
+
+See [ADR 0007](docs/decisions/0007-machine-profile-client-access-policy.md) for details.
+
+### v1.0 to v1.1 Migration
+
+**v1.0 tools** (library-specific) are deprecated but remain functional in v1.1:
+- `search_rtl`, `lookup_rtl_class`
+- `search_devexpress`, `lookup_devexpress_class`
+
+These tools will be removed in v1.2. Existing users should migrate to unified tools:
+- Replace separate searches with `search_delphi_source` (omit library to use profile scopes).
+- Replace separate lookups with `lookup_delphi_class` (omit library to use profile scopes).
+- For multi-version comparison, use `lookup_delphi_class` with comma-separated `versions` parameter.
+
+See [v1.0 → v1.1 Migration Guide](#v10--v11-migration-guide) below.
 
 ## End-to-End Workflow
 
@@ -205,7 +253,135 @@ Embedder quality comparison available in `ManualTesting/` folder:
 ## Architecture Decisions
 
 See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Architecture Decision Records (ADRs) and their purpose.
-Client access policy for machine profiles is documented in ADR 0007.
+Client access policy for machine profiles is documented in [ADR 0007](docs/decisions/0007-machine-profile-client-access-policy.md).
+Unified tool design is documented in [ADR 0008](docs/decisions/0008-unified-delphi-source-tools.md).
+
+## v1.0 → v1.1 Migration Guide
+
+### Overview
+
+v1.1 introduces **unified MCP tools** and **machine profile client access** for v1.0 users upgrading to the latest version.
+
+**Good news:** v1.0 library-specific tools remain functional in v1.1, so you can upgrade at your own pace.
+
+### What Changed
+
+| Feature | v1.0 | v1.1 |
+|---------|------|------|
+| **Tools** | `search_rtl`, `lookup_rtl_class`, `search_devexpress`, `lookup_devexpress_class` | `search_delphi_source`, `lookup_delphi_class` (unified) |
+| **Multi-library search** | Multiple tool calls | One call with `DefaultScopes` |
+| **Version comparison** | Not supported | Supported via `versions` parameter |
+| **Client authentication** | `Hosted:ApiKey` only | `ClientAccess` profiles + legacy fallback |
+| **Query policy** | No limits | Global + per-profile policy enforcement |
+
+### Tool Migration Examples
+
+#### Example 1: Single Library Search (No Change in Behavior)
+
+**v1.0:**
+```
+Tool: search_rtl(query="TStringList", topK=5)
+```
+
+**v1.1 (same):**
+```
+Tool: search_delphi_source(query="TStringList", library="rtl", topK=5)
+```
+
+#### Example 2: Multi-Library Search (Simplified)
+
+**v1.0 (manual combination):**
+```
+Tool 1: search_rtl(query="TStringList", topK=5)
+Tool 2: search_devexpress(query="TStringList", topK=5)
+Combine results manually
+```
+
+**v1.1 (unified, with profile scopes):**
+```
+Tool: search_delphi_source(query="TStringList", topK=5)
+# Automatically searches DefaultScopes from client profile (e.g., RTL 12.0 + DevExpress 25.2.6)
+```
+
+#### Example 3: Class Lookup (Same Signature, Enhanced)
+
+**v1.0:**
+```
+Tool: lookup_rtl_class(className="TStringList", version="12.0")
+```
+
+**v1.1 (backward compatible):**
+```
+Tool: lookup_delphi_class(className="TStringList", library="rtl", version="12.0")
+```
+
+**v1.1 (new: multi-version comparison):**
+```
+Tool: lookup_delphi_class(className="TStringList", library="rtl", versions="12.0,11.0")
+# Returns side-by-side declarations for easy comparison
+```
+
+### Configuration Migration
+
+#### v1.0 (Hosted Mode)
+
+```json
+{
+  "Hosted": {
+    "ApiKey": "your-secret-key"
+  }
+}
+```
+
+#### v1.1 (Option A: Keep Legacy)
+
+No changes needed. `Hosted:ApiKey` is still supported as fallback.
+
+#### v1.1 (Option B: Adopt Profiles)
+
+```json
+{
+  "ClientAccess": {
+    "GlobalPolicy": {
+      "MaxTopK": 10,
+      "MaxVersionsPerLibraryPerQuery": 2,
+      "MaxTargetScopesPerQuery": 4
+    },
+    "Profiles": {
+      "my-machine": {
+        "Enabled": true,
+        "DisplayName": "My Machine",
+        "ApiKeyRef": "MACHINE_API_KEY",
+        "DefaultScopes": [
+          { "Library": "rtl", "Version": "13.1" },
+          { "Library": "devexpress", "Version": "25.2.6" }
+        ]
+      }
+    }
+  }
+}
+```
+
+Set `MACHINE_API_KEY` environment variable or via user secrets.
+
+### What You Need to Do
+
+**Minimum (No-Action Upgrade):**
+- Upgrade to v1.1.
+- Old tools (`search_rtl`, etc.) continue working.
+- No code changes required.
+
+**Recommended (Full Migration):**
+1. Update tool calls to use `search_delphi_source` and `lookup_delphi_class`.
+2. Configure `ClientAccess` profiles with your machine's default libraries and versions.
+3. Remove explicit `library` parameters from queries where you can use `DefaultScopes`.
+4. Use `versions` parameter for version comparisons (instead of multiple tool calls).
+
+**Deprecation Timeline:**
+- v1.1: Old tools functional, deprecated in docs.
+- v1.2: Old tools removed.
+
+
 
 ## Hosted Smoke Test
 

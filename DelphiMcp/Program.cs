@@ -30,6 +30,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddLogging(lb =>
     lb.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace));
 
+builder.Services.AddHttpContextAccessor();
 RegisterEmbedder(builder.Services, builder.Configuration);
 builder.Services.AddSingleton(sp =>
 {
@@ -57,6 +58,7 @@ static async Task<int> RunHttpServerAsync(string[] args)
     builder.Services.AddLogging(lb =>
         lb.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace));
 
+    builder.Services.AddHttpContextAccessor();
     RegisterEmbedder(builder.Services, builder.Configuration);
     builder.Services.AddSingleton(sp =>
     {

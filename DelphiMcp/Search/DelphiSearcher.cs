@@ -9,7 +9,7 @@ public class DelphiSearcher(SqliteVectorStore store, IEmbeddingService embedder)
     private readonly SqliteVectorStore _store = store;
     private readonly IEmbeddingService _embedder = embedder;
 
-    public async Task<string> SearchAsync(string library, string? version, string query, int topK)
+    public virtual async Task<string> SearchAsync(string library, string? version, string query, int topK)
     {
         var embeddings = await _embedder.EmbedBatchAsync([query]);
         var hits = await _store.SearchAsync(library, version, embeddings[0], topK);
@@ -33,7 +33,7 @@ public class DelphiSearcher(SqliteVectorStore store, IEmbeddingService embedder)
         return sb.ToString();
     }
 
-    public async Task<string> LookupClassAsync(string library, string? version, string className)
+    public virtual async Task<string> LookupClassAsync(string library, string? version, string className)
     {
         // Exact-identifier hits first (cheap and authoritative).
         var exact = _store.FindByIdentifier(library, version, className, "type");
