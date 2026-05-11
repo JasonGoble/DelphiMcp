@@ -509,6 +509,21 @@ Keep releases lightweight and consistent:
 3. Publish a GitHub Release from that tag with summary notes.
 4. Verify release badge updates and link to notes in release PR/issue comments.
 
+## Governance Pattern
+
+For all `feat:`, `fix:`, and `docs:` changes, this project requires:
+
+1. A linked GitHub issue
+2. An ADR add/update under `docs/decisions/`
+3. A `README.md` update reflecting user/operator impact
+4. Tests where applicable and local validation
+
+Enforcement is provided by:
+
+- PR checklist template (`.github/pull_request_template.md`)
+- CI governance gate in `.github/workflows/ci.yml` for feature/fix/docs PRs
+- Copilot instructions in `.github/copilot-instructions.md`
+
 ## Status
 
 Local-first scaffold with dual mode support:

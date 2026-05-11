@@ -11,7 +11,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  governance-check:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate governance files for feature/fix/docs PRs
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          title_lower="$(echo "$PR_TITLE" | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$title_lower" =~ ^(feat|fix|docs): ]]; then
+            echo "PR title '$PR_TITLE' is not feat:/fix:/docs:, skipping governance gate."
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          echo "Changed files:"
+          echo "$changed_files"
+
+          has_readme=0
+          has_adr=0
+
+          if echo "$changed_files" | grep -q '^README.md$'; then
+            has_readme=1
+          fi
+
+          if echo "$changed_files" | grep -q '^docs/decisions/.*\.md$'; then
+            has_adr=1
+          fi
+
+          if [[ "$has_readme" -ne 1 || "$has_adr" -ne 1 ]]; then
+            echo "Governance check failed."
+            echo "Feature/fix/docs PRs must include:"
+            echo "- README.md update"
+            echo "- ADR update/addition under docs/decisions/*.md"
+            exit 1
+          fi
+
+          echo "Governance check passed."
+
   build-test:
+    needs: governance-check
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
