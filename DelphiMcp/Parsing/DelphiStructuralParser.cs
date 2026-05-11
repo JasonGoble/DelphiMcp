@@ -4,11 +4,13 @@ public sealed class DelphiStructuralParseResult
 {
     public DelphiAstSummary AstSummary { get; init; } = new();
     public IReadOnlyList<DelphiParserDiagnostic> Diagnostics { get; init; } = [];
+    public DelphiDiagnosticsPipelineResult DiagnosticsReport { get; init; } = new();
 }
 
 public sealed class DelphiStructuralParser
 {
     private readonly DelphiLexer _lexer;
+    private readonly DelphiDiagnosticsPipeline _diagnosticsPipeline;
 
     private static readonly HashSet<string> SectionKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -26,8 +28,14 @@ public sealed class DelphiStructuralParser
     }
 
     public DelphiStructuralParser(DelphiLexer lexer)
+        : this(lexer, new DelphiDiagnosticsPipeline())
+    {
+    }
+
+    public DelphiStructuralParser(DelphiLexer lexer, DelphiDiagnosticsPipeline diagnosticsPipeline)
     {
         _lexer = lexer;
+        _diagnosticsPipeline = diagnosticsPipeline;
     }
 
     public DelphiStructuralParseResult Parse(string sourceText)
@@ -137,6 +145,8 @@ public sealed class DelphiStructuralParser
             })
             .ToList();
 
+        var diagnosticsReport = _diagnosticsPipeline.Build(diagnostics);
+
         return new DelphiStructuralParseResult
         {
             AstSummary = new DelphiAstSummary
@@ -146,7 +156,8 @@ public sealed class DelphiStructuralParser
                 Sections = finalizedSections,
                 DirectiveRegions = lex.DirectiveRegions
             },
-            Diagnostics = diagnostics
+            Diagnostics = diagnosticsReport.Diagnostics,
+            DiagnosticsReport = diagnosticsReport
         };
     }
 
