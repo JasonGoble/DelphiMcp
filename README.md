@@ -432,7 +432,63 @@ v1.2 deprecates library-specific tools in preparation for removal in v1.3. This 
 
 See [ADR 0009: Library-Specific Tool Removal in v1.2](docs/decisions/0009-library-tool-removal-v1.2.md) for detailed rationale.
 
+---
 
+## v1.3 Breaking Changes: Library Tools Removed
+
+### Overview
+
+v1.3 removes library-specific tools entirely. This is a **breaking change requiring semver major version bump**.
+
+v1.2 users have had two release cycles (v1.1 → v1.2 → v1.3) to migrate. The time for deprecation is over.
+
+### What's Removed
+
+The following tools are **no longer available**:
+- `search_rtl` — permanently removed
+- `lookup_rtl_class` — permanently removed
+- `search_devexpress` — permanently removed
+- `lookup_devexpress_class` — permanently removed
+
+### What Changed
+
+| Component | v1.2 | v1.3 |
+|-----------|------|------|
+| Library-specific tools | `[Obsolete]` warnings | **Removed entirely** |
+| Unified tools | Available | Available (unchanged) |
+| Profiles | Optional | Optional (unchanged) |
+| File count | +2 tool files | -2 tool files |
+
+### Migration Required
+
+All v1.2 code must be updated before upgrading to v1.3:
+
+**Before (v1.2)**:
+```csharp
+// These no longer work:
+var rtl = await mcp.CallTool("search_rtl", new { query = "TStringList", topK = 5 });
+var cls = await mcp.CallTool("lookup_rtl_class", new { className = "TStringList" });
+```
+
+**After (v1.3)**:
+```csharp
+// Use unified tools instead:
+var rtl = await mcp.CallTool("search_delphi_source", new { 
+    query = "TStringList", 
+    library = "rtl", 
+    topK = 5 
+});
+var cls = await mcp.CallTool("lookup_delphi_class", new { 
+    className = "TStringList", 
+    library = "rtl" 
+});
+```
+
+### Deprecation Complete
+
+See [ADR 0010: Library-Specific Tool Removal Completion in v1.3](docs/decisions/0010-library-tool-removal-completion-v1.3.md) for full rationale.
+
+---
 
 ## Hosted Smoke Test
 
