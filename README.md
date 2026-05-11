@@ -19,6 +19,8 @@ component source code via embedding-based search.
   - Support optional `version` filtering and multi-version comparison.
 - **Client Access (v1.1)**: Machine profiles with API keys, default scopes, and per-profile query policy enforcement.
   See [ADR 0007](docs/decisions/0007-machine-profile-client-access-policy.md) and [ADR 0008](docs/decisions/0008-unified-delphi-source-tools.md).
+- **Parser Foundation (v2.0 Phase 1)**: Contract models for `parse_delphi_structure` are in place (`AstSummary`, `NormalizedSource`, `SymbolTable`, `Diagnostics`) as the base for parser-backed Delphi intelligence.
+  See [ADR 0011](docs/decisions/0011-parse-delphi-structure-contracts.md).
 
 ## CLI Quick Reference
 
