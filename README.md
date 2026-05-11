@@ -379,7 +379,58 @@ Set `MACHINE_API_KEY` environment variable or via user secrets.
 
 **Deprecation Timeline:**
 - v1.1: Old tools functional, deprecated in docs.
-- v1.2: Old tools removed.
+- v1.2: Old tools emit deprecation warnings; profiles required for scoped queries.
+- v1.3: Old tools removed (breaking change).
+
+---
+
+## v1.2 Breaking Changes & Deprecation
+
+### Overview
+
+v1.2 deprecates library-specific tools in preparation for removal in v1.3. This gives v1.1 users time to migrate.
+
+### What's Changing
+
+**Library-specific tools are now deprecated:**
+- `search_rtl` → Migrate to `search_delphi_source` with `library="rtl"`
+- `lookup_rtl_class` → Migrate to `lookup_delphi_class` with `library="rtl"`
+- `search_devexpress` → Migrate to `search_delphi_source` with `library="devexpress"`
+- `lookup_devexpress_class` → Migrate to `lookup_delphi_class` with `library="devexpress"`
+
+**What happens:**
+- v1.2: Old tools still work but emit `[Obsolete]` compiler warnings and deprecation notices in logs
+- v1.3 (next major): Old tools completely removed; profiles will be required
+
+### Migration from v1.1 to v1.2
+
+**Good news:** If you've already migrated to v1.1 unified tools, no action is required.
+
+**If you're still using v1.0 tools:**
+
+1. Update your code to use unified tools:
+   ```csharp
+   // Old (v1.0):
+   var result = await mcp.CallTool("search_rtl", new { query = "TStringList", topK = 5 });
+   
+   // New (v1.1+):
+   var result = await mcp.CallTool("search_delphi_source", new { 
+       query = "TStringList", 
+       library = "rtl", 
+       topK = 5 
+   });
+   ```
+
+2. Configure ClientAccess profiles (optional but recommended):
+   - Set `DefaultScopes` in your profile
+   - Omit the `library` parameter for multi-library searches
+
+3. Test your integration against v1.2 to ensure old tool calls produce deprecation warnings
+4. Plan to upgrade to v1.3+ once ready (removes old tools entirely)
+
+### Rationale
+
+See [ADR 0009: Library-Specific Tool Removal in v1.2](docs/decisions/0009-library-tool-removal-v1.2.md) for detailed rationale.
 
 
 
