@@ -63,6 +63,7 @@ jobs:
 
   build-test:
     needs: governance-check
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.governance-check.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
