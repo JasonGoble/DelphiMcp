@@ -24,6 +24,7 @@ component source code via embedding-based search.
   - Lexer + directive region handling: [ADR 0012](docs/decisions/0012-delphi-lexer-and-preprocessor-regions.md)
   - Structural parser (unit sections + uses + type declarations): [ADR 0013](docs/decisions/0013-delphi-structural-parser-unit-sections.md)
   - Normalized source renderer (deterministic token-based formatting): [ADR 0014](docs/decisions/0014-normalized-source-renderer.md)
+  - Symbol table extraction from parsed AST nodes: [ADR 0015](docs/decisions/0015-symbol-table-extraction.md)
 
 ## CLI Quick Reference
 
