@@ -119,13 +119,16 @@ DelphiMcp --bench-search --library rtl --version 12.3 --iterations 50 --top-k 10
 
 ```
 DelphiMcp                # stdio transport — point your Claude config at the executable
-DelphiMcp --http         # hosted HTTP transport (requires Hosted:ApiKey)
+DelphiMcp --http         # hosted HTTP transport
 ```
 
 In hosted mode, MCP endpoint defaults to `/mcp` and requires an API key sent via one of:
 
 - `Authorization: Bearer <api-key>`
 - `X-API-Key: <api-key>`
+
+Hosted authentication prefers profile-based client access (`ClientAccess`).
+Legacy `Hosted:ApiKey` is still supported as a migration fallback.
 
 Use [docs/setup/iis-and-claude-code.md](docs/setup/iis-and-claude-code.md) for IIS deployment and Claude Code setup.
 
@@ -140,11 +143,46 @@ Use [docs/setup/iis-and-claude-code.md](docs/setup/iis-and-claude-code.md) for I
 - `Storage:FaissIndexDir` — optional path for Faiss index files (default: `faiss-indexes` next to DB)
 - `Server:Mode` — `stdio` (default) or `http`
 - `Hosted:Path` — hosted MCP path (default: `/mcp`)
-- `Hosted:ApiKey` — required when `Server:Mode=http`
+- `Hosted:ApiKey` — legacy fallback API key for hosted mode
 - `Hosted:RequireHttps` — when `true`, redirects hosted mode traffic to HTTPS
+- `ClientAccess:GlobalPolicy:*` — hosted query policy defaults (`MaxTopK`, scope limits, version behavior)
+- `ClientAccess:Profiles:<id>:ApiKeyRef` — secret reference for a machine profile API key
+- `ClientAccess:Profiles:<id>:DefaultScopes` — default `(library, version)` targets for unscoped queries
+- `ClientAccess:Profiles:<id>:Options:*` — optional per-profile policy overrides
 - `Search:PrioritizedNamespaces` — namespace prefixes to favor during candidate selection and final ranking
 - `Search:NamespaceBoostFactor` — multiplier applied to distances for prioritized namespaces (default: `0.95`)
 - `Search:NamespaceOversampleFactor` — how many extra candidates to retrieve before reranking (default: `5`)
+
+### ClientAccess Example
+
+```json
+"ClientAccess": {
+  "GlobalPolicy": {
+    "MaxTopK": 10,
+    "MaxVersionsPerLibraryPerQuery": 2,
+    "MaxTargetScopesPerQuery": 4,
+    "AllowUnversionedQueries": true,
+    "RequireVersionWhenLibrarySpecified": false,
+    "DefaultSearchBehavior": "UseProfileDefaults"
+  },
+  "Profiles": {
+    "machine-a": {
+      "Enabled": true,
+      "DisplayName": "Computer A",
+      "ApiKeyRef": "MCP__KEY__MACHINE_A",
+      "DefaultScopes": [
+        { "Library": "rtl", "Version": "13.1" },
+        { "Library": "devexpress", "Version": "25.2.6" }
+      ],
+      "Options": {
+        "MaxTopK": 8
+      }
+    }
+  }
+}
+```
+
+Set `MCP__KEY__MACHINE_A` (or your chosen key reference names) in environment variables or user-secrets.
 
 ## Performance Characteristics
 
@@ -167,6 +205,7 @@ Embedder quality comparison available in `ManualTesting/` folder:
 ## Architecture Decisions
 
 See [docs/decisions/README.md](docs/decisions/README.md) for a list of all Architecture Decision Records (ADRs) and their purpose.
+Client access policy for machine profiles is documented in ADR 0007.
 
 ## Hosted Smoke Test
 
