@@ -1,5 +1,8 @@
 # DelphiMcp
 
+[![CI](https://github.com/JasonGoble/DelphiMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/JasonGoble/DelphiMcp/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/JasonGoble/DelphiMcp?display_name=tag)](https://github.com/JasonGoble/DelphiMcp/releases)
+
 MCP server providing Claude with grounded access to Delphi RTL/VCL/FMX and DevExpress
 component source code via embedding-based search.
 
@@ -159,6 +162,7 @@ Embedder quality comparison available in `ManualTesting/` folder:
 - **comparison-results.md**: Top-5 ranked search results for 14 test queries (Ollama vs OpenAI)
 - **Indexing logs**: Full execution traces for Ollama and OpenAI production runs
 - **Automated tests**: `dotnet test DelphiMcp.Tests/DelphiMcp.Tests.csproj` covers visibility extraction, schema migration, and visibility-aware ranking order
+- **CI automation**: Build and test status are automatically reported by GitHub Actions (see CI badge above)
 
 ## Architecture Decisions
 
@@ -171,6 +175,15 @@ Use [scripts/hosted-smoke-test.ps1](scripts/hosted-smoke-test.ps1) to quickly va
 - `/healthz` returns 200
 - unauthenticated `/mcp` returns 401
 - authenticated `/mcp` is accepted
+
+## Release Process
+
+Keep releases lightweight and consistent:
+
+1. Ensure CI is green on `main`.
+2. Create and push an annotated version tag (for example `v1.1.0`).
+3. Publish a GitHub Release from that tag with summary notes.
+4. Verify release badge updates and link to notes in release PR/issue comments.
 
 ## Status
 

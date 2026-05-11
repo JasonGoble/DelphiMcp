@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore DelphiMcp.sln
+
+      - name: Build
+        run: dotnet build DelphiMcp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test DelphiMcp.Tests/DelphiMcp.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
