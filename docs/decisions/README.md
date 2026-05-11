@@ -14,3 +14,4 @@ This folder contains Architecture Decision Records (ADRs) for the DelphiMcp proj
 - [ADR 0004: Visibility Metadata in Search Results](0004-visibility-metadata.md)
 - [ADR 0005: Database Vacuum Command](0005-database-vacuum.md)
 - [ADR 0006: Dual-Mode MCP Hosting with API Key Authentication](0006-hosted-http-and-api-key-auth.md)
+- [ADR 0007: Machine-Profile Client Access Policy](0007-machine-profile-client-access-policy.md)

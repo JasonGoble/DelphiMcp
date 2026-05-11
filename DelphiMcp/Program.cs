@@ -1,4 +1,5 @@
 using DelphiMcp;
+using DelphiMcp.ClientAccess;
 using DelphiMcp.Embedder;
 using DelphiMcp.Indexer;
 using DelphiMcp.Search;
@@ -75,11 +76,24 @@ static async Task<int> RunHttpServerAsync(string[] args)
     var app = builder.Build();
     var logger = app.Logger;
     var mcpPath = builder.Configuration["Hosted:Path"] ?? "/mcp";
-    var configuredApiKey = builder.Configuration["Hosted:ApiKey"];
     var requireHttps = ResolveHostedRequireHttps(builder.Configuration);
-    if (string.IsNullOrWhiteSpace(configuredApiKey))
+    var configuredApiKey = builder.Configuration["Hosted:ApiKey"];
+
+    ClientProfileResolver? profileResolver = null;
+    try
     {
-        throw new InvalidOperationException("Hosted:ApiKey must be configured when running HTTP mode.");
+        profileResolver = ClientProfileResolver.FromConfiguration(builder.Configuration);
+        logger.LogInformation("HTTP auth mode: client profile resolver enabled ({Count} profile(s)).", profileResolver.EnabledProfileCount);
+    }
+    catch (Exception ex) when (!string.IsNullOrWhiteSpace(configuredApiKey))
+    {
+        logger.LogWarning(ex, "ClientAccess configuration invalid or missing; falling back to Hosted:ApiKey.");
+    }
+
+    if (profileResolver is null && string.IsNullOrWhiteSpace(configuredApiKey))
+    {
+        throw new InvalidOperationException(
+            "Configure either ClientAccess profiles or Hosted:ApiKey when running HTTP mode.");
     }
 
     if (requireHttps)
@@ -92,13 +106,37 @@ static async Task<int> RunHttpServerAsync(string[] args)
         if (context.Request.Path.StartsWithSegments(mcpPath, StringComparison.OrdinalIgnoreCase))
         {
             var apiKeyPresent = TryReadApiKey(context, out var providedKey, out var apiKeySource);
-            if (!apiKeyPresent || !string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal))
+
+            var authorized = false;
+            string authReason = "unknown";
+
+            if (apiKeyPresent)
+            {
+                if (profileResolver is not null)
+                {
+                    authorized = profileResolver.TryResolveApiKey(providedKey, out var resolvedProfile, out authReason);
+                    if (authorized && resolvedProfile is not null)
+                        context.Items[ClientProfileResolver.HttpContextItemKey] = resolvedProfile;
+                }
+                else
+                {
+                    authorized = string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal);
+                    authReason = authorized ? "ok" : "legacy_key_mismatch";
+                }
+            }
+            else
+            {
+                authReason = "missing_api_key";
+            }
+
+            if (!authorized)
             {
                 logger.LogWarning(
-                    "Unauthorized MCP request. Path={Path}, Method={Method}, Source={Source}, RemoteIp={RemoteIp}, UserAgent={UserAgent}",
+                    "Unauthorized MCP request. Path={Path}, Method={Method}, Source={Source}, Reason={Reason}, RemoteIp={RemoteIp}, UserAgent={UserAgent}",
                     context.Request.Path,
                     context.Request.Method,
                     apiKeySource,
+                    authReason,
                     context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     context.Request.Headers.UserAgent.ToString());
 
