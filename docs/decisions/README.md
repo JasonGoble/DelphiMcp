@@ -20,3 +20,4 @@ This folder contains Architecture Decision Records (ADRs) for the DelphiMcp proj
 - [ADR 0010: Library-Specific Tool Removal Completion in v1.3](0010-library-tool-removal-completion-v1.3.md)
 - [ADR 0011: parse_delphi_structure Contract Schemas (v2.0 Phase 1)](0011-parse-delphi-structure-contracts.md)
 - [ADR 0012: Delphi Lexer and Preprocessor Region Handling (v2.0 #56)](0012-delphi-lexer-and-preprocessor-regions.md)
+- [ADR 0013: Delphi Structural Parser for Unit Sections (v2.0 #57)](0013-delphi-structural-parser-unit-sections.md)
