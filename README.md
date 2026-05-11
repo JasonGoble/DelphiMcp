@@ -22,6 +22,7 @@ component source code via embedding-based search.
 - **Parser Foundation (v2.0 Phase 1)**: Contract models for `parse_delphi_structure` are in place (`AstSummary`, `NormalizedSource`, `SymbolTable`, `Diagnostics`) as the base for parser-backed Delphi intelligence.
   - Contracts/schemas: [ADR 0011](docs/decisions/0011-parse-delphi-structure-contracts.md)
   - Lexer + directive region handling: [ADR 0012](docs/decisions/0012-delphi-lexer-and-preprocessor-regions.md)
+  - Structural parser (unit sections + uses + type declarations): [ADR 0013](docs/decisions/0013-delphi-structural-parser-unit-sections.md)
 
 ## CLI Quick Reference
 
