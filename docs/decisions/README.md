@@ -21,3 +21,4 @@ This folder contains Architecture Decision Records (ADRs) for the DelphiMcp proj
 - [ADR 0011: parse_delphi_structure Contract Schemas (v2.0 Phase 1)](0011-parse-delphi-structure-contracts.md)
 - [ADR 0012: Delphi Lexer and Preprocessor Region Handling (v2.0 #56)](0012-delphi-lexer-and-preprocessor-regions.md)
 - [ADR 0013: Delphi Structural Parser for Unit Sections (v2.0 #57)](0013-delphi-structural-parser-unit-sections.md)
+- [ADR 0014: Normalized Source Renderer for parse_delphi_structure (v2.0 #58)](0014-normalized-source-renderer.md)
