@@ -17,3 +17,4 @@ This folder contains Architecture Decision Records (ADRs) for the DelphiMcp proj
 - [ADR 0007: Machine-Profile Client Access Policy](0007-machine-profile-client-access-policy.md)
 - [ADR 0008: Unified Delphi Source Tools](0008-unified-delphi-source-tools.md)
 - [ADR 0009: Library-Specific Tool Removal in v1.2](0009-library-tool-removal-v1.2.md)
+- [ADR 0010: Library-Specific Tool Removal Completion in v1.3](0010-library-tool-removal-completion-v1.3.md)
